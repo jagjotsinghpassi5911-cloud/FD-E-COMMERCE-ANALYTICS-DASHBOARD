@@ -1,0 +1,26 @@
+{
+  "analysis_date": "2026-10-11",
+  "data_provenance": "synthetic_demo(seed=42)",
+  "data_is_actual_company_records": false,
+  "row_counts": {
+    "products": 32,
+    "customers": 1250,
+    "orders": 5200,
+    "order_items": 8037,
+    "marketing_campaigns": 14,
+    "campaign_conversions": 1009
+  },
+  "statuses": {
+    "Delivered": 4399,
+    "Shipped": 351,
+    "Cancelled": 301,
+    "Returned": 149
+  },
+  "realized_revenue_inr": 10750033.0,
+  "delivered_orders": 4399,
+  "unique_buyers": 891,
+  "attributed_revenue_inr": 2525382.0,
+  "marketing_spend_inr": 638527.0,
+  "roas": 3.95501208249612,
+  "automated_tests": "10/10 passed (pytest)"
+}

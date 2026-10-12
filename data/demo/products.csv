@@ -1,0 +1,33 @@
+product_id,name,category,unit_price,unit_cost,stock
+1,Linen Kurta Set,Fashion,1499.0,992.62,125.0
+2,Ajrakh Cotton Saree,Fashion,2199.0,1511.99,87.0
+3,Printed Co-ord Set,Fashion,1899.0,1213.86,46.0
+4,Festive Anarkali,Fashion,3499.0,2528.68,28.0
+5,Handloom Dupatta,Fashion,899.0,591.85,136.0
+6,Denim Overshirt,Fashion,1699.0,795.87,147.0
+7,Chikankari Kurti,Fashion,1799.0,1016.64,98.0
+8,Organic Cotton Tee,Fashion,799.0,565.72,76.0
+9,Palazzo Pants,Fashion,1099.0,684.85,81.0
+10,Indigo Shirt Dress,Fashion,2399.0,1350.7,154.0
+11,Nehru Jacket,Fashion,2499.0,1244.93,27.0
+12,Silk Stole,Fashion,1299.0,583.44,107.0
+13,Embroidered Juttis,Accessories,1299.0,881.1,59.0
+14,Oxidised Earrings,Accessories,599.0,393.8,121.0
+15,Leatherette Tote,Accessories,1999.0,1072.18,23.0
+16,Ethnic Clutch,Accessories,899.0,627.44,179.0
+17,Canvas Sling Bag,Accessories,1199.0,795.55,143.0
+18,Beaded Bracelet,Accessories,449.0,255.94,45.0
+19,Block Print Scarf,Accessories,799.0,354.07,106.0
+20,Pearl Hair Clip Set,Accessories,399.0,253.33,38.0
+21,Scrunchie Trio,Accessories,349.0,228.05,75.0
+22,Minimalist Belt,Accessories,749.0,395.28,179.0
+23,Rattan Storage Basket,Home Decor,1199.0,648.82,25.0
+24,Terracotta Planter Duo,Home Decor,899.0,437.67,93.0
+25,Macrame Wall Hanging,Home Decor,1799.0,843.69,130.0
+26,Aroma Candle Gift Set,Home Decor,1099.0,547.38,94.0
+27,Ceramic Vase Pair,Home Decor,1899.0,1198.16,174.0
+28,Jute Table Runner,Home Decor,649.0,441.19,87.0
+29,Handwoven Cushion Cover,Home Decor,799.0,511.42,28.0
+30,Brass Tea Light Holder,Home Decor,1399.0,950.87,66.0
+31,Bamboo Serving Tray,Home Decor,1499.0,1006.47,157.0
+32,Printed Wall Art,Home Decor,999.0,515.98,79.0

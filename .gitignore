@@ -1,0 +1,14 @@
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+.env
+.streamlit/secrets.toml
+*.pem
+firebase-key.json
+data/*.db
+data/*.db-*
+data/exports/
+.DS_Store
+Thumbs.db
