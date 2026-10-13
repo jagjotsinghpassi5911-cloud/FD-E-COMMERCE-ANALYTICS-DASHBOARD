@@ -215,7 +215,7 @@ elif page=="Customer Intelligence":
             if len(segments)>=8:
                 from sklearn.preprocessing import StandardScaler
                 from sklearn.cluster import KMeans
-                sample=segments[["recency","frequency", run"monetary"]]
+                sample=segments[["recency","frequency","monetary"]]
                 k=min(4,len(sample.drop_duplicates()))
                 if k>=2:
                     labels=KMeans(n_clusters=k,n_init=10,random_state=42).fit_predict(StandardScaler().fit_transform(sample))
