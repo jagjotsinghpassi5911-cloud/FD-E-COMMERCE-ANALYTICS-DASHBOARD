@@ -70,4 +70,70 @@ button, input, textarea {font-family:'DM Sans',sans-serif !important;}
 [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {color:%(text)s;}
 @media(max-width:880px){.block-container{padding-left:1rem;padding-right:1rem;}
  .hero{padding:22px 18px;}[data-testid="stMetric"]{padding:13px 14px;min-height:95px;}}
+
+/* Native Streamlit elements inherit the ORIGINAL browser theme otherwise.
+   Explicit contrast rules are necessary when switching themes at runtime. */
+.stApp {
+  --text-color: %(text)s;
+  --background-color: %(app)s;
+  --secondary-background-color: %(surface)s;
+  --secondary-text-color: %(muted)s;
+  --border-color: %(border)s;
+}
+/* Streamlit KPI values and their nested numeric spans. */
+[data-testid="stMetricValue"], [data-testid="stMetricValue"] *,
+[data-testid="stMetricDelta"] {color:%(text)s !important; opacity:1 !important;}
+[data-testid="stMetricLabel"], [data-testid="stMetricLabel"] * {
+  color:%(muted)s !important; opacity:1 !important;
+}
+/* Content and labels from the app's widget framework. */
+[data-testid="stMain"] [data-testid="stMarkdownContainer"] > p,
+[data-testid="stWidgetLabel"] p,
+[data-testid="stRadio"] label p,
+[data-testid="stCheckbox"] label p,
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] > p,
+[data-testid="stSidebar"] [data-testid="stExpander"] summary,
+[data-testid="stSidebar"] [data-testid="stExpander"] summary p {
+  color:%(text)s !important; opacity:1 !important;
+}
+[data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] * {
+  color:%(muted)s !important; opacity:1 !important;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] summary {
+  background:%(surface)s !important;
+  border-radius:9px;
+}
+/* Theme switcher and filter widgets in the sidebar. */
+[data-testid="stSidebar"] [data-testid="stSegmentedControl"] button {
+  background:%(surface)s !important;
+  color:%(text)s !important;
+}
+[data-testid="stSidebar"] [data-testid="stSegmentedControl"] button[aria-pressed="true"],
+[data-testid="stSidebar"] [data-testid="stSegmentedControl"] button[data-state="active"] {
+  background:%(badge)s !important;
+  color:%(badge_text)s !important;
+}
+[data-testid="stSidebar"] [data-baseweb="select"] > div,
+[data-testid="stSidebar"] [data-baseweb="input"] > div,
+[data-testid="stSidebar"] [data-baseweb="base-input"] {
+  background:%(surface)s !important;
+  color:%(text)s !important;
+  border-color:%(border)s !important;
+}
+[data-testid="stSidebar"] [data-baseweb="select"] input,
+[data-testid="stSidebar"] [data-baseweb="input"] input,
+[data-testid="stSidebar"] [data-baseweb="select"] [role="combobox"] {
+  color:%(text)s !important;
+}
+/* Plotly titles, legends, and axes must use the selected chart theme. */
+[data-testid="stPlotlyChart"] .gtitle,
+[data-testid="stPlotlyChart"] .xtick text,
+[data-testid="stPlotlyChart"] .ytick text,
+[data-testid="stPlotlyChart"] .legendtext,
+[data-testid="stPlotlyChart"] .xtitle,
+[data-testid="stPlotlyChart"] .ytitle {
+  fill:%(chart_text)s !important;
+  opacity:1 !important;
+}
+
 </style>""" % p
