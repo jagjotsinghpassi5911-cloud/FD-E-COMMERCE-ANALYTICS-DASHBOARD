@@ -9,6 +9,25 @@ import pandas as pd
 
 REQUIRED = {"InvoiceNo", "StockCode", "Description", "Quantity", "InvoiceDate", "UnitPrice", "Country"}
 MAX_LINES = 750_000
+# Explicit analytical classification for non-merchandise charges/adjustments.
+# These values stay in total reported sales but are excluded from the
+# merchandise-only best-selling product ranking.
+SERVICE_STOCK_CODES = {
+    "DOT", "POST", "M", "BANK CHARGES", "AMAZONFEE", "S", "D", "C2", "CRUK",
+}
+SERVICE_DESCRIPTIONS = {
+    "POSTAGE", "DOTCOM POSTAGE", "MANUAL", "BANK CHARGES",
+    "AMAZON FEE", "AMAZON FEE ADJUSTMENT", "DISCOUNT", "CARRIAGE",
+}
+
+
+def is_service_or_adjustment(df: pd.DataFrame) -> pd.Series:
+    """Return a transparent, rule-based flag; this is not a curated product taxonomy."""
+    if df.empty:
+        return pd.Series([], dtype=bool, index=df.index)
+    codes = df["StockCode"].astype("string").fillna("").str.strip().str.upper()
+    descriptions = df["Description"].astype("string").fillna("").str.strip().str.upper()
+    return (codes.isin(SERVICE_STOCK_CODES) | descriptions.isin(SERVICE_DESCRIPTIONS)).fillna(False).astype(bool)
 SOURCE_URL = "https://archive.ics.uci.edu/dataset/352/online+retail"
 
 
@@ -42,9 +61,21 @@ def clean_uci_online_retail(raw: pd.DataFrame) -> pd.DataFrame:
 def summarize_uci_online_retail(clean: pd.DataFrame) -> dict:
     realized = clean.loc[(~clean.is_cancelled) & (clean.Quantity > 0) & (clean.UnitPrice >= 0)]
     monthly = realized.assign(month=realized.InvoiceDate.dt.to_period("M").astype(str)).groupby("month", as_index=False).revenue_gbp.sum()
-    products = realized.groupby("Description", as_index=False).agg(revenue_gbp=("revenue_gbp", "sum"), units=("Quantity", "sum")).nlargest(12, "revenue_gbp")
+    is_service = is_service_or_adjustment(realized)
+    merchandise = realized.loc[~is_service]
+    services = realized.loc[is_service]
+    products = (merchandise.groupby("Description", as_index=False)
+                .agg(revenue_gbp=("revenue_gbp", "sum"), units=("Quantity", "sum"))
+                .nlargest(12, "revenue_gbp"))
+    services_by_type = (services.groupby("Description", as_index=False)
+                        .revenue_gbp.sum().sort_values("revenue_gbp", ascending=False))
     countries = realized.groupby("Country", as_index=False).revenue_gbp.sum().nlargest(12, "revenue_gbp")
     customers = realized["CustomerID"].dropna().nunique() if "CustomerID" in realized.columns else None
     return {"revenue": float(realized.revenue_gbp.sum()), "invoices": int(realized.InvoiceNo.nunique()),
             "customers": None if customers is None else int(customers), "cancelled_lines": int(clean.is_cancelled.sum()),
-            "monthly": monthly, "products": products, "countries": countries}
+            "monthly": monthly, "products": products, "countries": countries,
+            "services": services_by_type,
+            "service_revenue": float(services.revenue_gbp.sum()),
+            "service_lines": int(len(services)),
+            "period_start": clean.InvoiceDate.min(),
+            "period_end": clean.InvoiceDate.max()}

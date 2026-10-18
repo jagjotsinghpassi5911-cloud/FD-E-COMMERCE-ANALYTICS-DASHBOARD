@@ -14,7 +14,7 @@ from core.repository import get_repository
 from core.appearance import PALETTES, resolve_theme, stylesheet
 from core.real_data import clean_uci_online_retail, summarize_uci_online_retail, SOURCE_URL
 from core.analytics import (order_scope,sales_lines,sales_kpis,rfm_segments,cohort_retention,
-marketing_performance,channel_performance,quality_snapshot,recommendations)
+                             marketing_performance,channel_performance,quality_snapshot,recommendations)
 
 load_dotenv()
 st.set_page_config(page_title="FD Intelligence | Commerce Analytics",page_icon="◈",layout="wide",initial_sidebar_state="expanded")
@@ -406,6 +406,11 @@ elif page=="Real Data Explorer":
                 real=clean_uci_online_retail(raw)
                 summary=summarize_uci_online_retail(real)
             st.success(f"Analyzed {len(real):,} historical invoice lines from the uploaded file. No MongoDB data were replaced.")
+            st.caption(
+                "UCI historical reporting period: "
+                f"{summary['period_start']:%d %b %Y} – {summary['period_end']:%d %b %Y}. "
+                "The global 2025–2026 FD demo filters in the sidebar do NOT affect this separate uploaded dataset."
+            )
             # Original UCI records are in GBP. INR conversion is a documented display estimate.
             currency_choice = st.radio(
                 "Display currency",
@@ -419,6 +424,7 @@ elif page=="Real Data Explorer":
                 gbp_to_inr = st.number_input(
                     "Conversion rate: INR per 1 GBP (₹/£)",
                     min_value=0.01,
+                    max_value=1000.0,
                     value=None,
                     step=0.25,
                     format="%.4f",
@@ -441,7 +447,8 @@ elif page=="Real Data Explorer":
             monthly = summary["monthly"].copy()
             countries = summary["countries"].copy()
             products = summary["products"].copy()
-            for frame in (monthly, countries, products):
+            services = summary["services"].copy()
+            for frame in (monthly, countries, products, services):
                 frame["display_revenue"] = frame["revenue_gbp"] * factor
 
             a,b,c = st.columns(3)
@@ -462,13 +469,22 @@ elif page=="Real Data Explorer":
                     title=f"Top customer countries ({symbol})",
                     labels={"display_revenue": f"Revenue ({unit})"},
                 ), 370)
-            # Keep the existing merchandise vs postage analysis unchanged for now.
+            st.caption(
+                "Merchandise-only product ranking: postage, manual charges and selected service/adjustment "
+                "stock codes are classified separately. They remain included in the total sales KPI. "
+                "The classification is rule-based and should be reviewed for the source retailer."
+            )
             chart(px.bar(
                 products.sort_values("display_revenue"), x="display_revenue",
                 y="Description", orientation="h",
-                title=f"Top products by value ({symbol})",
+                title=f"Top merchandise products by value ({symbol})",
                 labels={"display_revenue": f"Revenue ({unit})"},
             ), 400)
+            if len(services):
+                with st.expander("Show non-merchandise charges and adjustments"):
+                    st.metric("Non-merchandise recorded sales, included in total", f"{symbol}{summary['service_revenue'] * factor:,.0f}")
+                    st.caption(f"{summary['service_lines']:,} positive-value line records classified as service/adjustment. Original GBP preserved.")
+                    st.dataframe(services[["Description", "revenue_gbp", "display_revenue"]].rename(columns={"display_revenue": f"display_revenue_{unit.lower()}"}),hide_index=True)
             exported = monthly[["month", "revenue_gbp"]].copy()
             if inr_requested:
                 exported["revenue_inr_estimated"] = monthly["display_revenue"]
