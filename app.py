@@ -406,16 +406,85 @@ elif page=="Real Data Explorer":
                 real=clean_uci_online_retail(raw)
                 summary=summarize_uci_online_retail(real)
             st.success(f"Analyzed {len(real):,} historical invoice lines from the uploaded file. No MongoDB data were replaced.")
-            a,b,c=st.columns(3)
-            a.metric("Gross realized sales (GBP)",f"£{summary['revenue']:,.0f}")
-            b.metric("Sales invoices",f"{summary['invoices']:,}")
-            c.metric("Cancellation / negative-quantity lines",f"{summary['cancelled_lines']:,}")
-            a,b=st.columns([1.25,1])
-            with a:chart(px.line(summary["monthly"],x="month",y="revenue_gbp",title="Monthly recorded sales (£)",markers=True),370)
-            with b:chart(px.bar(summary["countries"].sort_values("revenue_gbp"),x="revenue_gbp",y="Country",orientation="h",title="Top customer countries (£)"),370)
-            chart(px.bar(summary["products"].sort_values("revenue_gbp"),x="revenue_gbp",y="Description",orientation="h",title="Top products by value (£)"),400)
-            st.download_button("Export aggregated monthly sales · CSV",summary["monthly"].to_csv(index=False).encode("utf-8"),file_name="uci_historical_monthly_gbp.csv",mime="text/csv")
-            st.caption("Historical research data, not this fictional FD brand, not INR, and not live Shopify/marketplace orders. Blank customer identifiers remain missing; no customer names, ad spend, stock, acquisition dates, cost or attribution were invented.")
+            # Original UCI records are in GBP. INR conversion is a documented display estimate.
+            currency_choice = st.radio(
+                "Display currency",
+                ["GBP (£) — original", "INR (₹) — converted"],
+                horizontal=True,
+                key="uci_currency_display",
+            )
+            inr_requested = currency_choice.startswith("INR")
+            gbp_to_inr = None
+            if inr_requested:
+                gbp_to_inr = st.number_input(
+                    "Conversion rate: INR per 1 GBP (₹/£)",
+                    min_value=0.01,
+                    value=None,
+                    step=0.25,
+                    format="%.4f",
+                    help="Enter a rate from a credible exchange-rate source and record its date. "
+                         "One fixed rate across 2010–2011 is only an illustrative comparison.",
+                )
+                if gbp_to_inr is None:
+                    st.info("Enter a documented GBP → INR rate to view converted amounts.")
+                    st.stop()
+                st.caption(
+                    f"**Indicative INR display only:** £1 = ₹{float(gbp_to_inr):,.4f}. "
+                    "Conversion uses one user-supplied rate, not the historical daily "
+                    "rates of the original 2010–2011 transactions. Original data stay in GBP."
+                )
+                st.caption("Record the rate source and observation date in your faculty report.")
+            factor = float(gbp_to_inr) if inr_requested else 1.0
+            symbol = "₹" if inr_requested else "£"
+            unit = "INR" if inr_requested else "GBP"
+
+            monthly = summary["monthly"].copy()
+            countries = summary["countries"].copy()
+            products = summary["products"].copy()
+            for frame in (monthly, countries, products):
+                frame["display_revenue"] = frame["revenue_gbp"] * factor
+
+            a,b,c = st.columns(3)
+            a.metric(f"Gross realized sales ({unit})", f"{symbol}{summary['revenue'] * factor:,.0f}")
+            b.metric("Sales invoices", f"{summary['invoices']:,}")
+            c.metric("Cancellation / negative-quantity lines", f"{summary['cancelled_lines']:,}")
+            a,b = st.columns([1.25, 1])
+            with a:
+                chart(px.line(
+                    monthly, x="month", y="display_revenue",
+                    title=f"Monthly recorded sales ({symbol})", markers=True,
+                    labels={"month": "Month", "display_revenue": f"Revenue ({unit})"},
+                ), 370)
+            with b:
+                chart(px.bar(
+                    countries.sort_values("display_revenue"), x="display_revenue",
+                    y="Country", orientation="h",
+                    title=f"Top customer countries ({symbol})",
+                    labels={"display_revenue": f"Revenue ({unit})"},
+                ), 370)
+            # Keep the existing merchandise vs postage analysis unchanged for now.
+            chart(px.bar(
+                products.sort_values("display_revenue"), x="display_revenue",
+                y="Description", orientation="h",
+                title=f"Top products by value ({symbol})",
+                labels={"display_revenue": f"Revenue ({unit})"},
+            ), 400)
+            exported = monthly[["month", "revenue_gbp"]].copy()
+            if inr_requested:
+                exported["revenue_inr_estimated"] = monthly["display_revenue"]
+                exported["gbp_to_inr_rate_used"] = factor
+            st.download_button(
+                "Export aggregated monthly sales · CSV",
+                exported.to_csv(index=False).encode("utf-8"),
+                file_name=f"uci_historical_monthly_{unit.lower()}.csv",
+                mime="text/csv",
+            )
+            st.caption(
+                "This is authentic historical UK retailer research data (2010–2011), "
+                "not live FD-store sales. Original currency is GBP; any INR figures "
+                "are exchange-rate conversions, not Indian transactions. "
+                "No marketing expenditure, product cost, or attribution was invented."
+            )
         except Exception as exc:
             st.error(f"Could not analyze the UCI file: {type(exc).__name__}: {exc}")
     st.divider()
