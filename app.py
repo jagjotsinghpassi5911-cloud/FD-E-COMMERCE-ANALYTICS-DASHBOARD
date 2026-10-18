@@ -11,38 +11,37 @@ from dotenv import load_dotenv
 from core.schema import TABLES,validate,excel_template
 from core.generator import generate
 from core.repository import get_repository
+from core.appearance import PALETTES, resolve_theme, stylesheet
+from core.real_data import clean_uci_online_retail, summarize_uci_online_retail, SOURCE_URL
 from core.analytics import (order_scope,sales_lines,sales_kpis,rfm_segments,cohort_retention,
 marketing_performance,channel_performance,quality_snapshot,recommendations)
 
 load_dotenv()
-st.set_page_config(page_title="FD E-Commerce Analytics Dashboard | Commerce Analytics",page_icon="◈",layout="wide",initial_sidebar_state="expanded")
-st.markdown("""<style>
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;600;700;800&display=swap');
-html,body,[class*="css"],.stApp {font-family:'DM Sans',sans-serif;}
-h1,h2,h3 {font-family:'Manrope',sans-serif!important;letter-spacing:-.045em;}
-.block-container{padding-top:1.5rem;padding-bottom:4rem;max-width:1700px;}
-[data-testid="stMetric"]{background:linear-gradient(140deg,#1D2C42,#172236);border:1px solid #324056;padding:17px 20px;border-radius:16px;}
-[data-testid="stMetricLabel"]{color:#A9BBD3}
-[data-testid="stMetricValue"]{font-family:'Manrope';font-weight:800;font-size:1.75rem;}
-[data-testid="stSidebar"]{background:#111B2D;border-right:1px solid #2B3950;}
-[data-testid="stSidebar"] hr{border-color:#33435C}
-[data-testid="stPlotlyChart"]{border:1px solid #2F4056;border-radius:15px;overflow:hidden;}
-.stButton button[kind="primary"]{background:#D5A95F;color:#0E1726;font-weight:800;border:none;}
-.hero{padding:25px 30px;border:1px solid #3C4A5D;background:linear-gradient(120deg,#233956 0%,#142237 70%,#122132 100%);border-radius:18px;margin-bottom:17px;}
-.eyebrow{font-size:.76rem;font-weight:800;letter-spacing:.15em;color:#E3B869;text-transform:uppercase;}
-.hero h1{font-weight:800;font-size:2.1rem;margin:.25rem 0;line-height:1.2;color:#F7FAFC}
-.hero p{color:#B8C9DD;font-size:1rem;margin:.3rem 0 0}
-.tag{display:inline-block;border:1px solid #9B7840;color:#F3C679;border-radius:7px;padding:4px 9px;font-size:.75rem;margin-top:13px}
-[data-testid="stDataFrame"]{border:1px solid #2C3951;border-radius:10px;}
-</style>""",unsafe_allow_html=True)
+st.set_page_config(page_title="FD Intelligence | Commerce Analytics",page_icon="◈",layout="wide",initial_sidebar_state="expanded")
+# Session-based appearance controls. System follows the browser-resolved Streamlit theme.
+if "fd_color_mode" not in st.session_state:
+    st.session_state.fd_color_mode = "System"
+try:
+    client_theme = st.context.theme.type
+except (AttributeError, RuntimeError):
+    client_theme = None
+active_mode = resolve_theme(st.session_state.fd_color_mode, client_theme)
+PALETTE = PALETTES[active_mode]
+st.markdown(stylesheet(active_mode), unsafe_allow_html=True)
 
 COLORS=["#D8AC69","#72C4B6","#819DF3","#E18D84","#BBA0D9","#A2BD77","#5AA5CC"]
 def fmt_inr(x,dec=0): return f"₹{x:,.{dec}f}"
+def fmt_inr_short(value):
+    value = float(value)
+    if abs(value)>=10_000_000: return f"₹{value/10_000_000:.2f} Cr"
+    if abs(value)>=100_000: return f"₹{value/100_000:.2f} L"
+    return fmt_inr(value)
 def chart(fig,height=350):
-    fig.update_layout(template="plotly_dark",height=height,margin=dict(l=25,r=18,t=52,b=28),
-        paper_bgcolor="#101827",plot_bgcolor="#101827",font=dict(color="#D5DEEB",family="DM Sans"),
+    fig.update_layout(template=PALETTE["plotly"],height=height,margin=dict(l=25,r=18,t=52,b=28),
+        paper_bgcolor=PALETTE["chart"],plot_bgcolor=PALETTE["chart"],
+        font=dict(color=PALETTE["chart_text"],family="DM Sans"),
         colorway=COLORS,legend_title_text="")
-    st.plotly_chart(fig,use_container_width=True,config={"displaylogo":False})
+    st.plotly_chart(fig,width="stretch",config={"displaylogo":False})
 def empty_state(message="There are no records for these filters."): st.info(message)
 def excel_bytes(dframes):
     b=io.BytesIO()
@@ -78,12 +77,18 @@ categories=["All"]+sorted(data["products"].category.unique().tolist())
 source=metadata.get("source","unknown/unverified")
 admin_configured=bool(os.getenv("ADMIN_PASSWORD"))
 if "admin_logged_in" not in st.session_state: st.session_state.admin_logged_in=False
+if not admin_configured:
+    st.session_state.admin_logged_in = False
 
 with st.sidebar:
-    st.markdown("### ◈ FD E-Commerce Analytics Dashboard")
+    st.markdown("### ◈ FD / INTELLIGENCE")
     st.caption("Commerce performance command center")
+    with st.expander("Appearance · Light / Dark / System", expanded=False):
+        st.segmented_control("Color mode", options=["System", "Light", "Dark"],
+                             selection_mode="single", key="fd_color_mode", label_visibility="collapsed")
+        st.caption("System follows the Streamlit browser theme; session preference resets in a new browser session.")
     st.divider()
-    page=st.radio("WORKSPACE",["Executive Overview","Sales Intelligence","Customer Intelligence","Campaign & ROI","Product Performance","Data Studio","Decision Lab","Faculty Guide"],
+    page=st.radio("WORKSPACE",["Executive Overview","Sales Intelligence","Customer Intelligence","Campaign & ROI","Product Performance","Data Studio","Decision Lab","Real Data Explorer","Faculty Guide"],
         label_visibility="visible")
     st.divider()
     st.markdown("**GLOBAL SALES FILTERS**")
@@ -98,25 +103,28 @@ with st.sidebar:
     st.caption("DATA ENGINE")
     st.write(f"**{repo.mode}**")
     st.caption(f"Source: {source}")
-    if source.startswith("synthetic_demo"):
+    st.caption(f"Last dataset import: {metadata.get('loaded_at_utc', 'unknown')}")
+    if "synthetic" in source.lower():
         st.warning("SIMULATED DATA · NOT REAL STORE TRANSACTIONS")
     else:
         st.info("Imported dataset · provenance not independently verified")
-    with st.expander("Administrator access"):
-        if st.session_state.admin_logged_in:
-            st.success("Administrator unlocked")
-            if st.button("Sign out",key="logout"):
-                st.session_state.admin_logged_in=False
-                st.rerun()
-        elif not admin_configured:
-            st.caption("Set ADMIN_PASSWORD in .env to enable editing and raw-data export.")
-        else:
-            pw=st.text_input("Admin password",type="password",key="admin_pw")
-            if st.button("Unlock",key="unlock"):
-                if hmac.compare_digest(pw,os.getenv("ADMIN_PASSWORD","")):
-                    st.session_state.admin_logged_in=True
+    if st.button("Refresh current database snapshot", help="Re-read records already in MongoDB; does not fetch live sales from a store"):
+        st.rerun()
+    # Never render an administration entry point for a read-only cloud deployment.
+    if admin_configured:
+        with st.expander("Administrator workspace"):
+            if st.session_state.admin_logged_in:
+                st.success("Administrator unlocked")
+                if st.button("Sign out",key="logout"):
+                    st.session_state.admin_logged_in=False
                     st.rerun()
-                else:st.error("Incorrect password")
+            else:
+                pw=st.text_input("Admin password",type="password",key="admin_pw")
+                if st.button("Unlock",key="unlock"):
+                    if hmac.compare_digest(pw,os.getenv("ADMIN_PASSWORD","")):
+                        st.session_state.admin_logged_in=True
+                        st.rerun()
+                    else:st.error("Incorrect password")
     st.caption("PCTE · Interdisciplinary Minor Project")
 
 lines=sales_lines(data,start,end,region,category)
@@ -126,16 +134,17 @@ marketing=marketing_performance(data,start,end)  # National scope by design.
 channels=channel_performance(marketing)
 segments=rfm_segments(data,as_of=end,region=region)
 
-st.markdown(f'''<div class="hero"><div class="eyebrow">FD / E-COMMERCE ANALYTICS DASHBOARD</div>
+st.markdown(f'''<div class="hero"><div class="eyebrow">FD / E-COMMERCE PERFORMANCE SYSTEM</div>
 <h1>{page}</h1><p>Sales · Customer behavior · Campaign attribution · Business decisions</p>
 <span class="tag">{repo.mode}</span><span class="tag" style="margin-left:8px">{start} → {end}</span></div>''',unsafe_allow_html=True)
 
 if page=="Executive Overview":
     st.caption("Revenue = delivered order-line sales. Category filters apply to order lines; region filters apply to customers.")
-    k1,k2,k3,k4,k5=st.columns(5)
-    k1.metric("Delivered revenue",fmt_inr(kpis["revenue"]))
-    k2.metric("Orders containing selection",f'{kpis["orders"]:,}')
-    k3.metric("Sales per selected order",fmt_inr(kpis["aov"]))
+    k1,k2,k3=st.columns(3)
+    k1.metric("Delivered revenue",fmt_inr_short(kpis["revenue"]),help=f'Exact: {fmt_inr(kpis["revenue"])}')
+    k2.metric("Selected orders",f'{kpis["orders"]:,}',help="Orders with at least one selected delivered item")
+    k3.metric("Sales per selected order",fmt_inr_short(kpis["aov"]),help=f'Exact: {fmt_inr(kpis["aov"])}')
+    k4,k5=st.columns(2)
     k4.metric("Unique buyers",f'{kpis["customers"]:,}')
     k5.metric("Units sold",f'{kpis["units"]:,}')
     if not lines.empty:
@@ -182,9 +191,15 @@ elif page=="Sales Intelligence":
             chart(px.pie(pay,names="payment_method",values="order_id",title="Payment mix · selected delivered orders",hole=.4))
         st.subheader("Sales transactions")
         trans=lines.groupby(["order_id","order_date","customer_id"],as_index=False).agg(revenue=("revenue","sum"),units=("quantity","sum"))
-        st.dataframe(trans.sort_values("order_date",ascending=False),use_container_width=True,hide_index=True)
-        csv_download("Export filtered sales lines · CSV",lines,"fd_sales_lines.csv")
-        st.download_button("Export sales analysis · Excel",excel_bytes({"Transactions":trans,"Monthly":mon}),"fd_sales_analysis.xlsx",mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        if st.session_state.admin_logged_in:
+            st.dataframe(trans.sort_values("order_date",ascending=False),width="stretch",hide_index=True)
+            csv_download("Export filtered sales lines · CSV (admin)",lines,"fd_sales_lines.csv")
+            workbook={"Transactions":trans,"Monthly":mon}
+        else:
+            st.caption("Detailed order and customer identifiers are available only in a trusted administrator session.")
+            st.dataframe(mon,width="stretch",hide_index=True)
+            workbook={"Monthly":mon}
+        st.download_button("Export sales analysis · Excel",excel_bytes(workbook),"fd_sales_analysis.xlsx",mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     else:empty_state()
 
 elif page=="Customer Intelligence":
@@ -223,8 +238,11 @@ elif page=="Customer Intelligence":
                     chart(px.scatter(pts,x="recency",y="monetary",size="frequency",color="cluster",title="ML clusters (numeric IDs only)"))
                 else:empty_state("Not enough distinct behavior patterns to cluster.")
             else:empty_state("At least eight purchasing customers are needed for ML clusters.")
-        csv_download("Export RFM segments · CSV",segments,"fd_customer_rfm.csv")
-        st.dataframe(segments.sort_values("monetary",ascending=False).head(100),hide_index=True,use_container_width=True)
+        if st.session_state.admin_logged_in:
+            csv_download("Export RFM segments · CSV (admin)",segments,"fd_customer_rfm.csv")
+            st.dataframe(segments.sort_values("monetary",ascending=False).head(100),hide_index=True,width="stretch")
+        else:
+            st.caption("Individual customer RFM records are restricted. Aggregated segments are available above.")
     else:empty_state("No delivered customer history before the selected end date.")
 
 elif page=="Campaign & ROI":
@@ -234,10 +252,11 @@ elif page=="Campaign & ROI":
     total_rev=float(marketing.attributed_revenue.sum())
     total_margin=float(marketing.attributed_contribution.sum())
     total_conv=int(marketing.conversions.sum())
-    a,b,c,d,e=st.columns(5)
-    a.metric("Allocated ad spend",fmt_inr(total_spend))
-    b.metric("Attributed revenue",fmt_inr(total_rev))
+    a,b,c=st.columns(3)
+    a.metric("Allocated ad spend",fmt_inr_short(total_spend),help=fmt_inr(total_spend))
+    b.metric("Attributed revenue",fmt_inr_short(total_rev),help=fmt_inr(total_rev))
     c.metric("ROAS",f"{total_rev/total_spend:.2f}×" if total_spend else "—")
+    d,e=st.columns(2)
     d.metric("Contribution ROI proxy",f"{(total_margin-total_spend)/total_spend*100:.1f}%" if total_spend else "—")
     e.metric("Attributed conversions",f"{total_conv:,}")
     if not channels.empty:
@@ -249,7 +268,7 @@ elif page=="Campaign & ROI":
             chart(px.bar(channels.sort_values("roas"),x="roas",y="channel",orientation="h",title="Revenue ROAS by channel",color="roas",color_continuous_scale="Teal"),390)
         st.subheader("Campaign-level performance")
         view=marketing[["name","channel","allocated_spend","attributed_revenue","attributed_contribution","conversions","cpa","roas","roi_proxy_pct","ctr_pct","cvr_pct"]].copy()
-        st.dataframe(view,hide_index=True,use_container_width=True,column_config={
+        st.dataframe(view,hide_index=True,width="stretch",column_config={
             "allocated_spend":st.column_config.NumberColumn("Allocated spend ₹",format="%.2f"),
             "attributed_revenue":st.column_config.NumberColumn("Attributed revenue ₹",format="%.2f"),
             "attributed_contribution":st.column_config.NumberColumn("Attributed contribution ₹",format="%.2f"),
@@ -282,7 +301,7 @@ elif page=="Product Performance":
         with a:chart(px.bar(prod.head(12).sort_values("revenue"),x="revenue",y="name",orientation="h",title="Top products by realized revenue",color="category"))
         with b:chart(px.scatter(prod,x="revenue",y="margin_pct",size="units",hover_name="name",color="category",title="Product volume vs margin proxy"))
         st.caption("ABC classification is based on cumulative realized revenue for the selected scope. Stock levels are static demonstration snapshots, not live inventory ledger balances.")
-        st.dataframe(prod,hide_index=True,use_container_width=True)
+        st.dataframe(prod,hide_index=True,width="stretch")
         csv_download("Export product insights · CSV",prod,"fd_product_performance.csv")
     else:empty_state()
 
@@ -295,18 +314,18 @@ elif page=="Data Studio":
     c.metric("Product SKUs",q["products"])
     d.metric("Campaign attributions",f'{q["attributed_orders"]:,}')
     st.info(f"Current source: **{source}** | Loaded UTC: **{metadata.get('loaded_at_utc','unknown')}** | Engine: **{repo.mode}**")
-    with st.expander("Data dictionary and table previews",expanded=False):
-        table=st.selectbox("Collection / table",list(TABLES))
-        st.write("Required fields:",", ".join(TABLES[table]))
-        preview=data[table].head(50).copy()
-        if table=="customers" and not st.session_state.admin_logged_in:
-            preview["name"]="[masked — admin access required]"
-        st.dataframe(preview,use_container_width=True,hide_index=True)
-    with st.expander("Data audit trail"):
-        st.dataframe(repo.audits(),use_container_width=True,hide_index=True)
+    with st.expander("Data dictionary and collection sizes",expanded=False):
+        st.dataframe(pd.DataFrame([{"Collection":t,"Records":len(data[t]),
+                    "Required fields":", ".join(TABLES[t])} for t in TABLES]),hide_index=True,width="stretch")
+        if st.session_state.admin_logged_in:
+            table=st.selectbox("Collection preview (admin)",list(TABLES))
+            st.dataframe(data[table].head(50),width="stretch",hide_index=True)
+    if st.session_state.admin_logged_in:
+        with st.expander("Data audit trail (admin)"):
+            st.dataframe(repo.audits(),width="stretch",hide_index=True)
     st.subheader("Import · export · database management")
     if not st.session_state.admin_logged_in:
-        st.warning("Data modification and raw personal-data export require administrator access in the sidebar. Set ADMIN_PASSWORD in .env first.")
+        st.info("Database edits and sensitive exports are available only in a trusted local administrator session. The online dashboard stays read-only.")
     else:
         st.download_button("Backup complete database · 6 CSV tables + provenance",backup_bytes(data,metadata),
                            file_name="fd_full_database_backup.zip",mime="application/zip")
@@ -375,6 +394,34 @@ elif page=="Decision Lab":
     st.subheader("Definitions")
     st.markdown("**Data integration:** validated joins linking customers → orders → order items → products and campaigns → conversions → delivered orders.\n\n**Business intelligence:** turning these records into KPIs, customer cohorts, segments and comparable campaign metrics.\n\n**Actionability:** translating computed trends into testable strategic recommendations with stated assumptions.")
 
+elif page=="Real Data Explorer":
+    st.subheader("Authentic historical retail transactions")
+    st.info("**REAL HISTORICAL DATA, NOT LIVE FD STORE DATA.** This explorer accepts the UCI Online Retail dataset (2010–2011, UK gift retailer). Original sales are in **GBP (£)**. Marketing spend, attribution and product costs are not available from this dataset.")
+    st.markdown(f"[Get the publicly documented UCI Online Retail dataset]({SOURCE_URL}) · Source: Chen, D. (2015), UCI Online Retail, CC BY 4.0. Download **Online Retail.xlsx** from the source, then upload it here.")
+    upload=st.file_uploader("Upload UCI Online Retail .xlsx or .csv (session-only; never written to MongoDB)",type=["xlsx","csv"],key="uci_file")
+    if upload is not None:
+        try:
+            with st.spinner("Reading and checking authentic transaction records..."):
+                raw=pd.read_excel(upload,dtype={"InvoiceNo":"string","StockCode":"string","CustomerID":"string"}) if upload.name.lower().endswith(".xlsx") else pd.read_csv(upload,dtype={"InvoiceNo":"string","StockCode":"string","CustomerID":"string"})
+                real=clean_uci_online_retail(raw)
+                summary=summarize_uci_online_retail(real)
+            st.success(f"Analyzed {len(real):,} historical invoice lines from the uploaded file. No MongoDB data were replaced.")
+            a,b,c=st.columns(3)
+            a.metric("Gross realized sales (GBP)",f"£{summary['revenue']:,.0f}")
+            b.metric("Sales invoices",f"{summary['invoices']:,}")
+            c.metric("Cancellation / negative-quantity lines",f"{summary['cancelled_lines']:,}")
+            a,b=st.columns([1.25,1])
+            with a:chart(px.line(summary["monthly"],x="month",y="revenue_gbp",title="Monthly recorded sales (£)",markers=True),370)
+            with b:chart(px.bar(summary["countries"].sort_values("revenue_gbp"),x="revenue_gbp",y="Country",orientation="h",title="Top customer countries (£)"),370)
+            chart(px.bar(summary["products"].sort_values("revenue_gbp"),x="revenue_gbp",y="Description",orientation="h",title="Top products by value (£)"),400)
+            st.download_button("Export aggregated monthly sales · CSV",summary["monthly"].to_csv(index=False).encode("utf-8"),file_name="uci_historical_monthly_gbp.csv",mime="text/csv")
+            st.caption("Historical research data, not this fictional FD brand, not INR, and not live Shopify/marketplace orders. Blank customer identifiers remain missing; no customer names, ad spend, stock, acquisition dates, cost or attribution were invented.")
+        except Exception as exc:
+            st.error(f"Could not analyze the UCI file: {type(exc).__name__}: {exc}")
+    st.divider()
+    st.subheader("What is required for genuinely live FD sales?")
+    st.markdown("Connect an **authorized real store** (for example Shopify GraphQL Admin API, WooCommerce REST API, or periodic POS exports) and separately integrate actual campaign spend/conversion records. Then validate them against the FD schema, keep a source audit trail and apply scheduled refreshes. A refresh button only reloads current MongoDB records; it does not create real transactions.")
+
 elif page=="Faculty Guide":
     st.subheader("Live evaluation: 7-minute walkthrough")
     steps=[
@@ -384,7 +431,7 @@ elif page=="Faculty Guide":
         ("02:40 · Explain sales and buyers","Show time series, top products, delivered revenue, repeat-customer RFM, and cohort heatmap."),
         ("04:10 · Show marketing mathematics","Open Campaign & ROI. Explain ROAS, CPA, cost-based contribution ROI proxy, and single-touch attribution."),
         ("05:15 · Demonstrate data imports","Log in as admin, download template, show strict validations, show CSV/Excel exports and a full backup. Avoid replacing the live data unnecessarily."),
-        ("06:30 · Discuss limits and future work","This is a transparent proof-of-concept. Data are generated unless explicitly imported; no payment integration, live commerce API, verified causal marketing uplift, or audited profit accounting.")]
+        ("06:30 · Discuss limits and future work","The FD database uses simulated data unless verified store exports are provided. Real Data Explorer can study genuine historical UK transactions separately, not live FD orders. There is no connected live commerce API or audited causal ROI.")]
     for title,body in steps:
         with st.expander(title,expanded=True):st.write(body)
     st.subheader("Project objective coverage")
@@ -394,8 +441,9 @@ elif page=="Faculty Guide":
         ("Marketing ROI","Campaign & ROI","ROAS, CPA, contribution ROI, date allocation"),
         ("Integrated data","Data Studio","Six linked tables; MongoDB option; strict imports"),
         ("Strategic decisions","Decision Lab","Rule-driven insights, scenario calculator"),
-        ("Dynamic and exportable","Sidebar + Data Studio","Filtering, Excel/CSV export, backup, validation")],columns=["Faculty requirement","Where demonstrated","Evidence"]),hide_index=True)
+        ("Dynamic and exportable","Sidebar + Data Studio","Filtering, aggregate reports, admin-only raw exports and validated imports"),
+        ("Authentic historical reference","Real Data Explorer","UCI Online Retail external file, GBP; explicitly not FD or live")],columns=["Faculty requirement","Where demonstrated","Evidence"]),hide_index=True)
     st.caption("Read docs/FACULTY_VIVA_GUIDE.md and docs/PROJECT_REPORT.md for methods, formulas, limitations, diagrams and questions.")
 
 st.divider()
-st.caption("FD Intelligence · Academic analytics prototype · Transactional and attribution data provenance shown in sidebar · INR currency · Reporting date depends on imported dataset")
+st.caption("FD Intelligence v2 · Academic analytics prototype · Source and last import shown in sidebar · FD demonstration currency: INR · Historical UCI reference currency: GBP")
